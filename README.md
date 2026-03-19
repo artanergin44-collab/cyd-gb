@@ -1,4 +1,4 @@
-# 🎮 CYD-GB
+ # 🎮 CYD-GB
 
 **Game Boy emulator for the $15 ESP32 Cheap Yellow Display — fully touchscreen controlled.**
 
@@ -24,7 +24,7 @@ The first GB emulator running on ESP32-2432S028R (CYD) without PSRAM and without
 ### 1. Clone or Download
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/cyd-gb.git
+git clone https://github.com/artanergin44-collab/cyd-gb.git
 cd cyd-gb
 ```
 
