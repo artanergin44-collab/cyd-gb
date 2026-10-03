@@ -15,8 +15,20 @@
 static void wait_release() { 
 	// wait until no button is pressed
 	button_update();
-	while(button_get_buttons()) { button_update(); delay(10); }
+	touch_update();
+	while(button_get_buttons() || touch_is_pressed()) {
+		button_update(); touch_update(); delay(10);
+	}
 	delay(100);
+}
+
+static bool touch_press(int* x, int* y, bool* was_pressed) {
+	touch_update();
+	bool pressed = touch_is_pressed();
+	bool edge = pressed && !*was_pressed;
+	*was_pressed = pressed;
+	if (edge) { *x = touch_get_x(); *y = touch_get_y(); }
+	return edge;
 }
 
 static void draw_header(const char* t) {
@@ -89,13 +101,35 @@ int launcher_show(RomEntry* roms, int cnt) {
 	draw_header("Game Boy ROMs");
 
 	draw_list(roms,cnt,pg,sel);
+	wait_release();
 	uint16_t prev = 0;
+	bool touch_was_pressed = false;
 	uint32_t dbg_t = 0;
 	int total = cnt + 1;
 	int tp = (total+ITEMS_PP-1)/ITEMS_PP;
 	while (true) {
 		button_update();
 		uint16_t b = button_get_buttons();
+		int tx = -1, ty = -1;
+		if (touch_press(&tx, &ty, &touch_was_pressed)) {
+			if (ty >= SCREEN_H - 20) {
+				if (tx >= SCREEN_W - 45) {
+					touch_run_calibration();
+					tft.fillScreen(TFT_BLACK); draw_header("Game Boy ROMs");
+					draw_list(roms,cnt,pg,sel);
+				} else if (tx < SCREEN_W / 2 && pg > 0) {
+					pg--; sel = pg * ITEMS_PP; draw_list(roms,cnt,pg,sel);
+				} else if (tx >= SCREEN_W / 2 && pg < tp - 1) {
+					pg++; sel = pg * ITEMS_PP; draw_list(roms,cnt,pg,sel);
+				}
+			} else if (ty >= ITEM_Y0 && ty < ITEM_Y0 + ITEMS_PP * ITEM_H) {
+				int chosen = pg * ITEMS_PP + (ty - ITEM_Y0) / ITEM_H;
+				if (chosen < total) {
+					if (chosen == cnt) return LAUNCHER_SEL_BT_SCANNER;
+					return chosen;
+				}
+			}
+		}
 		// Up
 		if ((b & GB_BTN_UP) && !(prev & GB_BTN_UP)) {
 			if (sel > 0) sel--; else if (pg>0) { pg--; sel = min(total-1, pg*ITEMS_PP+ITEMS_PP-1); }
@@ -158,9 +192,19 @@ int launcher_ingame_menu() {
 	int hl=0;
 	mbtn(btn_x,btn_w,yp[hl],lb[hl],fc[hl],true);
 	uint16_t prev = 0;
+	bool touch_was_pressed = false;
 	while(true) {
 		button_update();
 		uint16_t b = button_get_buttons();
+		int tx = -1, ty = -1;
+		if (touch_press(&tx, &ty, &touch_was_pressed) && tx >= btn_x && tx < btn_x + btn_w) {
+			for (int i = 0; i < MI; ++i) {
+				if (ty >= yp[i] && ty < yp[i] + 26) {
+					static const int actions[MI] = {0, 1, 2, 5, 3};
+					return actions[i];
+				}
+			}
+		}
 		if ((b & GB_BTN_UP) && !(prev & GB_BTN_UP)) {
 			mbtn(btn_x,btn_w,yp[hl],lb[hl],fc[hl],false);
 			hl = (hl==0)?MI-1:hl-1;
@@ -190,8 +234,9 @@ void launcher_settings_menu(bool* show_fps_overlay, bool* show_save_overlay) {
 	uint8_t pal = emu_get_palette();
 	uint8_t fs = emu_get_frame_skip();
 	uint8_t bl = 255; // brightness
-	(void)show_fps_overlay;
-	(void)show_save_overlay;
+	uint8_t saved_pal = 0, saved_fs = 0, saved_bl = 255;
+	touch_load_settings(&saved_pal, &saved_fs, &saved_bl);
+	bl = saved_bl;
 
 	// Selected row: 0=palette,1=frameskip,2=brightness,3=done
 	int sel = 0;
@@ -249,10 +294,30 @@ void launcher_settings_menu(bool* show_fps_overlay, bool* show_save_overlay) {
 
 	draw_settings(sel);
 	wait_release();
+	bool touch_was_pressed = false;
 
 	while(true) {
 		button_update();
 		uint16_t b = button_get_buttons();
+		int tx = -1, ty = -1;
+		if (touch_press(&tx, &ty, &touch_was_pressed)) {
+			if (ty >= 302) {
+				touch_save_settings(pal, fs, bl, *show_fps_overlay, *show_save_overlay);
+				wait_release(); return;
+			}
+			if (ty >= 65 && ty < 93) {
+				pal = (pal + NUM_PALETTES + (tx < SCREEN_W / 2 ? -1 : 1)) % NUM_PALETTES;
+				emu_set_palette(pal); sel = 0; draw_settings(sel);
+			} else if (ty >= 120 && ty < 148) {
+				if (tx < SCREEN_W / 2 && fs > 0) --fs;
+				if (tx >= SCREEN_W / 2 && fs < 4) ++fs;
+				emu_set_frame_skip(fs); sel = 1; draw_settings(sel);
+			} else if (ty >= 175 && ty < 203) {
+				if (tx < SCREEN_W / 2) bl = bl > 30 ? bl - 25 : bl;
+				else bl = min(255, (int)bl + 25);
+				display_set_backlight(bl); sel = 2; draw_settings(sel);
+			}
+		}
 		// Navigation: up/down change selected row (edge detect)
 		if ((b & GB_BTN_UP) && !(prev & GB_BTN_UP)) { sel = (sel==0)?3:sel-1; draw_settings(sel); }
 		if ((b & GB_BTN_DOWN) && !(prev & GB_BTN_DOWN)) { sel = (sel+1)%4; draw_settings(sel); }
@@ -269,7 +334,7 @@ void launcher_settings_menu(bool* show_fps_overlay, bool* show_save_overlay) {
 			if ((b & GB_BTN_RIGHT) && !(prev & GB_BTN_RIGHT)) { if (bl<255) { bl=min(255,bl+25); display_set_backlight(bl); draw_settings(sel); } }
 		} else if (sel==3) {
 			if ((b & GB_BTN_A) && !(prev & GB_BTN_A)) {
-				touch_save_settings(pal, fs, bl, false, false);
+				touch_save_settings(pal, fs, bl, *show_fps_overlay, *show_save_overlay);
 				wait_release();
 				return;
 			}

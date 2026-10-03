@@ -20,15 +20,21 @@ static bool has_saved_settings = false;
 void input_task(void* p) {
     (void)p;
     bool prev_menu_combo = false;
+    bool prev_touch_menu = false;
     for(;;) {
         button_update();
+        touch_update();
         if (emu_on) {
-            uint16_t b = button_get_buttons();
-            bool menu_combo = (b & (GB_BTN_START | GB_BTN_SELECT)) == (GB_BTN_START | GB_BTN_SELECT);
-            if (menu_combo && !prev_menu_combo) {
+            uint16_t physical = button_get_buttons();
+            uint16_t touch = touch_get_buttons();
+            uint16_t b = physical | touch;
+            bool menu_combo = (physical & (GB_BTN_START | GB_BTN_SELECT)) == (GB_BTN_START | GB_BTN_SELECT);
+            bool touch_menu = (touch & GB_BTN_MENU) != 0;
+            if ((menu_combo && !prev_menu_combo) || (touch_menu && !prev_touch_menu)) {
                 menu_req = true;
             }
             prev_menu_combo = menu_combo;
+            prev_touch_menu = touch_menu;
             if (menu_combo) {
                 emu_set_joypad(b & ~(GB_BTN_START | GB_BTN_SELECT));
             } else {
@@ -45,33 +51,37 @@ static void tt_start() {
 }
 static void tt_stop() { if(ttask) vTaskSuspend(ttask); }
 
-static void save_ram() {
-    if(!cur_path[0]) return;
+static bool save_ram() {
+    if(!cur_path[0]) return false;
     uint32_t sz=0; uint8_t* r=emu_get_cart_ram(&sz);
     if(sz>0) {
         bool ok = sd_save_state(cur_path,r,sz);
         Serial.printf("[SAVE] %u bytes (%s)\n",sz, ok ? "ok" : "fail");
+        return ok;
     }
+    return false;
 }
 
-static void load_ram() {
-    if(!cur_path[0]) return;
+static bool load_ram() {
+    if(!cur_path[0]) return false;
     uint32_t sz=0;
     uint8_t* cart_ram = emu_get_cart_ram(&sz);
     if (sz == 0) {
         Serial.println("[SAVE] Load skipped: cart RAM size is 0");
-        return;
+        return false;
     }
 
     if (!cart_ram) {
         Serial.println("[SAVE] Load failed: cart RAM pointer is null");
-        return;
+        return false;
     }
 
     if (sd_load_state(cur_path, cart_ram, sz)) {
         Serial.printf("[SAVE] Loaded %u bytes\n", sz);
+        return true;
     } else {
         Serial.printf("[SAVE] No load for %s\n", cur_path);
+        return false;
     }
 }
 
@@ -84,6 +94,7 @@ void run_emu() {
 
     while(emu_on) {
         emu_run_frame();
+        display_draw_menu_icon();
 
         if (menu_req) {
             menu_req = false;
@@ -93,21 +104,30 @@ void run_emu() {
             switch(c) {
                 case 0: break;  // resume
                 case 1:  // save
-                    save_ram();
+                {
+                    bool ok = save_ram();
                     tft.fillRect(80,80,160,40,TFT_BLACK);
-                    tft.setTextDatum(MC_DATUM); tft.setTextColor(TFT_GREEN);
-                    tft.drawString("SAVED!",SCREEN_W/2,100,4);
+                    tft.setTextDatum(MC_DATUM); tft.setTextColor(ok ? TFT_GREEN : TFT_RED);
+                    tft.drawString(ok ? "SAVED!" : "SAVE FAILED",SCREEN_W/2,100,2);
                     delay(700);
                     break;
+                }
                 case 2:  // load
-                    load_ram(); emu_reset(); load_ram();
+                {
+                    uint32_t sz = 0;
+                    uint8_t* cart_ram = emu_get_cart_ram(&sz);
+                    bool ok = sz > 0 && cart_ram && load_ram();
+                    if (ok) { emu_reset(); load_ram(); }
                     tft.fillRect(80,80,160,40,TFT_BLACK);
-                    tft.setTextDatum(MC_DATUM); tft.setTextColor(0x07FF);
-                    tft.drawString("LOADED!",SCREEN_W/2,100,4);
+                    tft.setTextDatum(MC_DATUM); tft.setTextColor(ok ? 0x07FF : TFT_RED);
+                    tft.drawString(ok ? "LOADED!" : "NO SAVE",SCREEN_W/2,100,2);
                     delay(700);
                     break;
+                }
                 case 3:  // quit
                     emu_on=false; save_ram(); tt_stop(); return;
+                case 4:
+                    touch_run_calibration(); break;
                 case 5:  // settings
                     launcher_settings_menu(&show_fps_overlay, &show_sd_save_overlay); break;
             }

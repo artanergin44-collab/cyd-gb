@@ -119,31 +119,51 @@ static bool cp2spiffs(const char* sp, const char* dp) {
     File s=SD.open(sp,FILE_READ); if(!s) return false;
     File d=SPIFFS.open(dp,FILE_WRITE); if(!d){s.close();return false;}
     uint8_t buf[512]; uint32_t tot=0;
-    while(s.available()){size_t r=s.read(buf,512);d.write(buf,r);tot+=r;
+    uint32_t expected=s.size();
+    bool ok=true;
+    while(s.available()){size_t r=s.read(buf,512);if(r==0 || d.write(buf,r)!=r){ok=false;break;}tot+=r;
         if(tot%65536==0) Serial.printf("[SPIFFS] %uKB\n",tot/1024);}
     d.close();s.close();
+    if(!ok || tot!=expected){SPIFFS.remove(dp);return false;}
     Serial.printf("[SPIFFS] Done %u bytes\n",tot); return true;
 }
 
 // ─── API ────────────────────────────────────────────────────────────────────
 bool emu_open_rom(const char* path) {
-    bool spiffs_ok = SPIFFS.begin(true);
+    File sf=SD.open(path,FILE_READ); if(!sf) return false;
+    uint32_t sz=sf.size();
+    time_t modified=sf.getLastWrite();
+    sf.close();
+    bool spiffs_ok = SPIFFS.begin(false);
     if(!spiffs_ok) {
         Serial.println("[SPIFFS] unavailable, fallback to SD");
     }
     String sn="/rom.gb";
     if(spiffs_ok && SPIFFS.exists(sn)){
-        File sc=SD.open(path,FILE_READ); uint32_t ssz=sc?sc.size():0; if(sc)sc.close();
-        romf=SPIFFS.open(sn,FILE_READ);
-        if(romf && romf.size()==ssz){romlen=romf.size();Serial.printf("[EMU] SPIFFS %uKB\n",romlen/1024);return true;}
-        if(romf) romf.close();
+        File meta=SPIFFS.open("/rom.meta",FILE_READ);
+        bool matches=false;
+        if(meta){
+            String cached_path=meta.readStringUntil('\n');
+            uint32_t cached_size=meta.parseInt();
+            time_t cached_modified=(time_t)meta.parseInt();
+            matches=modified>0 && cached_path==path && cached_size==sz && cached_modified==modified;
+            meta.close();
+        }
+        if(matches){
+            romf=SPIFFS.open(sn,FILE_READ);
+            if(romf && romf.size()==sz){romlen=sz;Serial.printf("[EMU] SPIFFS %uKB\n",romlen/1024);return true;}
+            if(romf) romf.close();
+        }
     }
-    File sf=SD.open(path,FILE_READ); if(!sf) return false;
-    uint32_t sz=sf.size(); sf.close();
+    if(spiffs_ok){
+        SPIFFS.remove("/rom.meta");
+        if(SPIFFS.exists(sn)) SPIFFS.remove(sn);
+    }
     if(spiffs_ok && sz<=SPIFFS.totalBytes()-SPIFFS.usedBytes()){
         Serial.println("[EMU] Copying to SPIFFS...");
-        if(SPIFFS.exists(sn)) SPIFFS.remove(sn);
         if(cp2spiffs(path,sn.c_str())){
+            File meta=SPIFFS.open("/rom.meta",FILE_WRITE);
+            if(meta){meta.printf("%s\n%u\n%ld\n",path,sz,(long)modified);meta.close();}
             romf=SPIFFS.open(sn,FILE_READ);
             if(romf){romlen=romf.size();return true;}
         }
