@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="CYD-GB pixel cartridge logo">
+  <rect width="192" height="192" rx="28" fill="#0b1422"/>
+  <rect x="20" y="20" width="152" height="152" rx="16" fill="#172c38" stroke="#b9f273" stroke-width="4"/>
+  <g fill="#b9f273" shape-rendering="crispEdges" transform="translate(32 32)">
+    <rect width="128" height="16"/>
+    <rect y="16" width="16" height="16"/><rect x="112" y="16" width="16" height="16"/>
+    <rect y="32" width="16" height="16"/><rect x="32" y="32" width="64" height="16"/><rect x="112" y="32" width="16" height="16"/>
+    <rect y="48" width="16" height="16"/><rect x="32" y="48" width="16" height="16"/><rect x="80" y="48" width="16" height="16"/><rect x="112" y="48" width="16" height="16"/>
+    <rect y="64" width="16" height="16"/><rect x="32" y="64" width="64" height="16"/><rect x="112" y="64" width="16" height="16"/>
+    <rect y="80" width="16" height="16"/><rect x="48" y="80" width="32" height="16"/><rect x="112" y="80" width="16" height="16"/>
+    <rect y="96" width="16" height="16"/><rect x="48" y="96" width="32" height="16"/><rect x="112" y="96" width="16" height="16"/>
+    <rect y="112" width="128" height="16"/>
+  </g>
+</svg>

@@ -16,6 +16,8 @@ void emu_set_frame_skip(uint8_t skip);
 uint8_t emu_get_frame_skip();
 uint32_t emu_get_fps();
 void emu_reset();
+bool emu_save_state(const char* rom_path);
+bool emu_load_state(const char* rom_path);
 uint16_t* emu_get_line_buffer();
 
 // Palette

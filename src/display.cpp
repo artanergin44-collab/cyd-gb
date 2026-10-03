@@ -69,3 +69,33 @@ void display_draw_menu_icon() {
     tft.setTextColor(TFT_WHITE, 0x528A);
     tft.drawString("II", BTN_M_X, BTN_M_Y, 1);
 }
+
+void display_draw_pixel_logo(int x, int y, int scale) {
+    static const uint8_t pixels[8] = {
+        0xFF, 0x81, 0xBD, 0xA5, 0xBD, 0x99, 0x99, 0xFF
+    };
+    tft.fillRect(x,y,8*scale,8*scale,0x1082);
+    for (int row=0; row<8; ++row) {
+        for (int col=0; col<8; ++col) {
+            if (pixels[row] & (0x80 >> col))
+                tft.fillRect(x+col*scale,y+row*scale,scale,scale,0xBFE0);
+        }
+    }
+}
+
+void display_show_boot_animation() {
+    tft.fillScreen(0x0842);
+    display_draw_pixel_logo(88,70,8);
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(TFT_WHITE,0x0842);
+    tft.drawString("CYD-GB",SCREEN_W/2,164,4);
+    tft.setTextColor(0x7BEF,0x0842);
+    tft.drawString("GAME BOY / BLE HUB",SCREEN_W/2,190,2);
+    for (int i=0; i<8; ++i) {
+        tft.fillRoundRect(32+i*23,230,17,6,2,0xBFE0);
+        delay(55);
+    }
+    tft.setTextColor(0xBFE0,0x0842);
+    tft.drawString("READY TO PLAY",SCREEN_W/2,262,2);
+    delay(350);
+}

@@ -130,6 +130,19 @@ void run_emu() {
                     touch_run_calibration(); break;
                 case 5:  // settings
                     launcher_settings_menu(&show_fps_overlay, &show_sd_save_overlay); break;
+                case 6:  // complete emulator state
+                case 7:
+                {
+                    bool ok = c == 6 ? emu_save_state(cur_path) : emu_load_state(cur_path);
+                    tft.fillRect(36,80,SCREEN_W-72,40,TFT_BLACK);
+                    tft.setTextDatum(MC_DATUM);
+                    tft.setTextColor(ok ? TFT_GREEN : TFT_RED);
+                    tft.drawString(c == 6 ? (ok ? "STATE SAVED" : "SAVE FAILED")
+                                           : (ok ? "STATE LOADED" : "NO VALID STATE"),
+                                   SCREEN_W/2,100,2);
+                    delay(700);
+                    break;
+                }
             }
             display_clear(TFT_BLACK);
             display_draw_controls();
@@ -173,11 +186,7 @@ void setup() {
         while(true) delay(1000);
     }
 
-    // Splash
-    tft.fillScreen(TFT_BLACK); tft.setTextDatum(MC_DATUM);
-    tft.setTextColor(0x07E0); tft.drawString("CYD-GB",SCREEN_W/2,70,4);
-    tft.setTextColor(0x7BEF); tft.drawString("Game Boy Emulator",SCREEN_W/2,110,2);
-    delay(1200);
+    display_show_boot_animation();
 
     // Load saved settings from NVS
     uint8_t s_pal, s_fs, s_bl;

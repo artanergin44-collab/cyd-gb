@@ -8,7 +8,7 @@
 
 #define ITEMS_PP 5
 #define ITEM_H   34
-#define ITEM_Y0  44
+#define ITEM_Y0  74
 #define ITEM_X   8
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -32,18 +32,25 @@ static bool touch_press(int* x, int* y, bool* was_pressed) {
 }
 
 static void draw_header(const char* t) {
-	tft.fillRect(0,0,SCREEN_W,36,0x18C3);
-	tft.setTextColor(TFT_WHITE,0x18C3); tft.setTextDatum(ML_DATUM);
-	tft.drawString(t,10,18,2);
-	tft.setTextDatum(MR_DATUM); tft.setTextColor(0x7BEF,0x18C3);
-	tft.drawString("CYD-GB",SCREEN_W-10,18,1);
+	(void)t;
+	tft.fillRect(0,0,SCREEN_W,52,0x18C3);
+	display_draw_pixel_logo(9,9,4);
+	tft.setTextDatum(ML_DATUM);
+	tft.setTextColor(TFT_WHITE,0x18C3);
+	tft.drawString("CYD-GB",50,20,4);
+	tft.setTextColor(0xBFE0,0x18C3);
+	tft.drawString("PLAY  /  SCAN",51,40,1);
+	tft.fillRect(0,52,SCREEN_W,2,0xBFE0);
 }
 
 // ─── ROM List ───────────────────────────────────────────────────────────────
 static void draw_list(RomEntry* r, int cnt, int pg, int sel) {
 	int total = cnt + 1; // extra entry: BT scanner
 	int s = pg*ITEMS_PP, e = min(s+ITEMS_PP, total);
-	tft.fillRect(0,38,SCREEN_W,202,TFT_BLACK);
+	tft.fillRect(0,55,SCREEN_W,245,TFT_BLACK);
+	tft.setTextDatum(ML_DATUM);
+	tft.setTextColor(0x7BEF,TFT_BLACK);
+	tft.drawString("LIBRARY",ITEM_X,64,1);
 
 	for (int i=s; i<e; i++) {
 		int y = ITEM_Y0 + (i-s)*ITEM_H;
@@ -83,6 +90,14 @@ static void draw_list(RomEntry* r, int cnt, int pg, int sel) {
 		}
 	}
 
+	tft.fillRoundRect(8,252,SCREEN_W-16,37,5,0x1082);
+	tft.setTextDatum(ML_DATUM);
+	tft.setTextColor(0xBFE0,0x1082);
+	char status[32]; snprintf(status,sizeof(status),"%d GAMES  /  BLE",cnt);
+	tft.drawString(status,17,265,2);
+	tft.setTextColor(0x7BEF,0x1082);
+	tft.drawString("TAP TO OPEN  /  D-PAD + A",17,281,1);
+
 	// Nav bar
 	tft.fillRect(0,SCREEN_H-20,SCREEN_W,20,0x18C3);
 	int tp = (total+ITEMS_PP-1)/ITEMS_PP;
@@ -95,6 +110,14 @@ static void draw_list(RomEntry* r, int cnt, int pg, int sel) {
 	tft.drawString("[CAL]",SCREEN_W-5,SCREEN_H-10,1);
 }
 
+static void draw_hub_pulse(uint8_t phase) {
+	tft.fillRect(202,272,27,15,0x1082);
+	for (int i=0;i<3;++i) {
+		int height=4+((phase+i)%3)*4;
+		tft.fillRect(204+i*8,286-height,5,height,0xBFE0);
+	}
+}
+
 int launcher_show(RomEntry* roms, int cnt) {
 	int pg=0, sel=0;
 	tft.fillScreen(TFT_BLACK);
@@ -105,9 +128,15 @@ int launcher_show(RomEntry* roms, int cnt) {
 	uint16_t prev = 0;
 	bool touch_was_pressed = false;
 	uint32_t dbg_t = 0;
+	uint32_t anim_t = 0;
+	uint8_t anim_phase = 0;
 	int total = cnt + 1;
 	int tp = (total+ITEMS_PP-1)/ITEMS_PP;
 	while (true) {
+		if (millis()-anim_t>=220) {
+			anim_t=millis();
+			draw_hub_pulse(anim_phase++);
+		}
 		button_update();
 		uint16_t b = button_get_buttons();
 		int tx = -1, ty = -1;
@@ -173,7 +202,7 @@ int launcher_ingame_menu() {
 	const int panel_w = SCREEN_W - 24;
 	const int panel_x = (SCREEN_W - panel_w) / 2;
 	const int panel_y = 10;
-	const int panel_h = 220;
+	const int panel_h = 264;
 	const int btn_w = panel_w - 24;
 	const int btn_x = panel_x + 12;
 
@@ -182,10 +211,10 @@ int launcher_ingame_menu() {
 	tft.setTextColor(0xFFE0,TFT_BLACK); tft.setTextDatum(MC_DATUM);
 	tft.drawString("PAUSED",SCREEN_W/2,28,4);
 
-	#define MI 5
-	int yp[MI]={58,88,118,148,178};
-	const char* lb[MI]={"Resume","Save Game","Load Save","Settings","Quit"};
-	uint16_t fc[MI]={TFT_GREEN,0x07FF,0x07FF,0xFFE0,TFT_RED};
+	#define MI 7
+	int yp[MI]={50,80,110,140,170,200,230};
+	const char* lb[MI]={"Resume","Save RAM","Load RAM","Quick Save","Quick Load","Settings","Quit"};
+	uint16_t fc[MI]={TFT_GREEN,0x07FF,0x07FF,0xFFE0,0xFFE0,0xFFE0,TFT_RED};
 	for(int i=0;i<MI;i++) mbtn(btn_x,btn_w,yp[i],lb[i],fc[i],false);
 	wait_release();
 
@@ -200,7 +229,7 @@ int launcher_ingame_menu() {
 		if (touch_press(&tx, &ty, &touch_was_pressed) && tx >= btn_x && tx < btn_x + btn_w) {
 			for (int i = 0; i < MI; ++i) {
 				if (ty >= yp[i] && ty < yp[i] + 26) {
-					static const int actions[MI] = {0, 1, 2, 5, 3};
+					static const int actions[MI] = {0, 1, 2, 6, 7, 5, 3};
 					return actions[i];
 				}
 			}
@@ -218,8 +247,8 @@ int launcher_ingame_menu() {
 		// A = select
 		if ((b & GB_BTN_A) && !(prev & GB_BTN_A)) {
 			int s = hl;
-			// 0=resume 1=save 2=load 3=settings 4=quit
-			switch(s){case 0:return 0;case 1:return 1;case 2:return 2;case 3:return 5;case 4:return 3;}
+			static const int actions[MI] = {0, 1, 2, 6, 7, 5, 3};
+			return actions[s];
 		}
 		// B = cancel -> resume
 		if ((b & GB_BTN_B) && !(prev & GB_BTN_B)) return 0;
