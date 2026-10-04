@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" role="img" aria-label="CYD-GB game hub illustration">
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#091523"/><stop offset="1" stop-color="#153748"/></linearGradient>
+    <linearGradient id="screen" x2="0" y2="1"><stop stop-color="#1d4150"/><stop offset="1" stop-color="#0b1b29"/></linearGradient>
+  </defs>
+  <rect width="960" height="360" rx="28" fill="url(#bg)"/>
+  <path d="M0 304h960M0 320h960M0 336h960M32 0v360M48 0v360M64 0v360" stroke="#b9f273" opacity=".09"/>
+  <rect x="50" y="58" width="96" height="96" rx="18" fill="#172c38" stroke="#b9f273" stroke-width="3"/>
+  <g fill="#b9f273" shape-rendering="crispEdges" transform="translate(66 74) scale(.5)">
+    <rect width="128" height="16"/><rect y="16" width="16" height="16"/><rect x="112" y="16" width="16" height="16"/>
+    <rect y="32" width="16" height="16"/><rect x="32" y="32" width="64" height="16"/><rect x="112" y="32" width="16" height="16"/>
+    <rect y="48" width="16" height="16"/><rect x="32" y="48" width="16" height="16"/><rect x="80" y="48" width="16" height="16"/><rect x="112" y="48" width="16" height="16"/>
+    <rect y="64" width="16" height="16"/><rect x="32" y="64" width="64" height="16"/><rect x="112" y="64" width="16" height="16"/>
+    <rect y="80" width="16" height="16"/><rect x="48" y="80" width="32" height="16"/><rect x="112" y="80" width="16" height="16"/>
+    <rect y="96" width="16" height="16"/><rect x="48" y="96" width="32" height="16"/><rect x="112" y="96" width="16" height="16"/>
+    <rect y="112" width="128" height="16"/>
+  </g>
+  <text x="50" y="218" fill="#f4f7e9" font-family="monospace" font-size="68" font-weight="bold" letter-spacing="-4">CYD-GB</text>
+  <text x="53" y="263" fill="#b9f273" font-family="monospace" font-size="19" letter-spacing="2">PLAY  /  SAVE  /  SCAN</text>
+  <text x="53" y="312" fill="#9ab1bb" font-family="sans-serif" font-size="18">Game Boy on the Cheap Yellow Display</text>
+  <g transform="translate(610 18)">
+    <rect x="0" y="0" width="246" height="326" rx="24" fill="#111923" stroke="#527181" stroke-width="5"/>
+    <rect x="17" y="18" width="212" height="234" rx="8" fill="url(#screen)"/>
+    <rect x="27" y="28" width="192" height="37" fill="#28475a"/>
+    <text x="39" y="53" fill="#f4f7e9" font-family="monospace" font-size="19" font-weight="bold">CYD-GB</text>
+    <text x="33" y="87" fill="#9ab1bb" font-family="monospace" font-size="11">LIBRARY</text>
+    <rect x="29" y="96" width="188" height="30" rx="6" fill="#3b4b54"/>
+    <rect x="35" y="102" width="25" height="18" rx="3" fill="#b9f273"/>
+    <text x="67" y="116" fill="#f4f7e9" font-family="monospace" font-size="13">GAME ONE</text>
+    <rect x="29" y="132" width="188" height="30" rx="6" fill="#172c38"/>
+    <rect x="35" y="138" width="25" height="18" rx="3" fill="#729aa6"/>
+    <text x="67" y="152" fill="#f4f7e9" font-family="monospace" font-size="13">GAME TWO</text>
+    <rect x="29" y="168" width="188" height="30" rx="6" fill="#172c38"/>
+    <rect x="35" y="174" width="25" height="18" rx="3" fill="#64cad4"/>
+    <text x="67" y="188" fill="#f4f7e9" font-family="monospace" font-size="13">BLE SCANNER</text>
+    <rect x="29" y="211" width="188" height="28" rx="5" fill="#1b3845"/>
+    <text x="39" y="230" fill="#b9f273" font-family="monospace" font-size="10">GAMES  +  BLE</text>
+    <path d="M38 286h42M59 265v42" stroke="#839ca4" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="185" cy="281" r="14" fill="#d95663"/><circle cx="153" cy="300" r="14" fill="#5e8ac3"/>
+    <circle cx="216" cy="12" r="4" fill="#b9f273"/>
+  </g>
+  <g fill="#b9f273" opacity=".8"><rect x="870" y="74" width="12" height="12"/><rect x="890" y="74" width="12" height="12"/><rect x="890" y="94" width="12" height="12"/><rect x="870" y="114" width="12" height="12"/></g>
+</svg>

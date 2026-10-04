@@ -1,6 +1,7 @@
 #include "emulator_bridge.h"
 #include "display.h"
 #include "hw_config.h"
+#include "sd_manager.h"
 #include <Arduino.h>
 #include <string.h>
 #include <SD.h>
@@ -25,6 +26,8 @@ static uint32_t acc = 0;
 static int npg = 0;
 static File romf;
 static uint32_t romlen = 0;
+static char active_rom_path[80] = {0};
+static time_t active_rom_modified = 0;
 
 #define B0SZ (32*1024)
 static uint8_t* b0 = nullptr;
@@ -119,39 +122,62 @@ static bool cp2spiffs(const char* sp, const char* dp) {
     File s=SD.open(sp,FILE_READ); if(!s) return false;
     File d=SPIFFS.open(dp,FILE_WRITE); if(!d){s.close();return false;}
     uint8_t buf[512]; uint32_t tot=0;
-    while(s.available()){size_t r=s.read(buf,512);d.write(buf,r);tot+=r;
+    uint32_t expected=s.size();
+    bool ok=true;
+    while(s.available()){size_t r=s.read(buf,512);if(r==0 || d.write(buf,r)!=r){ok=false;break;}tot+=r;
         if(tot%65536==0) Serial.printf("[SPIFFS] %uKB\n",tot/1024);}
     d.close();s.close();
+    if(!ok || tot!=expected){SPIFFS.remove(dp);return false;}
     Serial.printf("[SPIFFS] Done %u bytes\n",tot); return true;
 }
 
 // ─── API ────────────────────────────────────────────────────────────────────
 bool emu_open_rom(const char* path) {
-    bool spiffs_ok = SPIFFS.begin(true);
+    active_rom_path[0] = 0;
+    active_rom_modified = 0;
+    File sf=SD.open(path,FILE_READ); if(!sf) return false;
+    uint32_t sz=sf.size();
+    time_t modified=sf.getLastWrite();
+    sf.close();
+    active_rom_modified=modified;
+    bool spiffs_ok = SPIFFS.begin(false);
     if(!spiffs_ok) {
         Serial.println("[SPIFFS] unavailable, fallback to SD");
     }
     String sn="/rom.gb";
     if(spiffs_ok && SPIFFS.exists(sn)){
-        File sc=SD.open(path,FILE_READ); uint32_t ssz=sc?sc.size():0; if(sc)sc.close();
-        romf=SPIFFS.open(sn,FILE_READ);
-        if(romf && romf.size()==ssz){romlen=romf.size();Serial.printf("[EMU] SPIFFS %uKB\n",romlen/1024);return true;}
-        if(romf) romf.close();
+        File meta=SPIFFS.open("/rom.meta",FILE_READ);
+        bool matches=false;
+        if(meta){
+            String cached_path=meta.readStringUntil('\n');
+            uint32_t cached_size=meta.parseInt();
+            time_t cached_modified=(time_t)meta.parseInt();
+            matches=modified>0 && cached_path==path && cached_size==sz && cached_modified==modified;
+            meta.close();
+        }
+        if(matches){
+            romf=SPIFFS.open(sn,FILE_READ);
+            if(romf && romf.size()==sz){romlen=sz;strlcpy(active_rom_path,path,sizeof(active_rom_path));Serial.printf("[EMU] SPIFFS %uKB\n",romlen/1024);return true;}
+            if(romf) romf.close();
+        }
     }
-    File sf=SD.open(path,FILE_READ); if(!sf) return false;
-    uint32_t sz=sf.size(); sf.close();
+    if(spiffs_ok){
+        SPIFFS.remove("/rom.meta");
+        if(SPIFFS.exists(sn)) SPIFFS.remove(sn);
+    }
     if(spiffs_ok && sz<=SPIFFS.totalBytes()-SPIFFS.usedBytes()){
         Serial.println("[EMU] Copying to SPIFFS...");
-        if(SPIFFS.exists(sn)) SPIFFS.remove(sn);
         if(cp2spiffs(path,sn.c_str())){
+            File meta=SPIFFS.open("/rom.meta",FILE_WRITE);
+            if(meta){meta.printf("%s\n%u\n%ld\n",path,sz,(long)modified);meta.close();}
             romf=SPIFFS.open(sn,FILE_READ);
-            if(romf){romlen=romf.size();return true;}
+            if(romf){romlen=romf.size();strlcpy(active_rom_path,path,sizeof(active_rom_path));return true;}
         }
     }
     romf=SD.open(path,FILE_READ); if(!romf) return false;
-    romlen=romf.size(); return true;
+    romlen=romf.size(); strlcpy(active_rom_path,path,sizeof(active_rom_path)); return true;
 }
-void emu_close_rom(){if(romf)romf.close();romlen=0;}
+void emu_close_rom(){if(romf)romf.close();romlen=0;active_rom_path[0]=0;active_rom_modified=0;}
 
 bool emu_init(uint8_t*,uint32_t) {
     if(!romf||!romlen) return false;
@@ -194,3 +220,128 @@ uint8_t emu_get_frame_skip(){return fskip;}
 uint32_t emu_get_fps(){return cfps;}
 uint16_t* emu_get_line_buffer(){return lbuf;}
 void emu_reset(){gb_reset(gb);fcnt=0;}
+
+// A quick state belongs to one ROM and one firmware state layout.
+struct QuickStateHeader {
+    char magic[8];
+    uint32_t version;
+    uint32_t rom_size;
+    uint32_t rom_signature;
+    uint32_t core_size;
+    uint32_t ram_size;
+    uint32_t checksum;
+};
+
+static uint32_t state_hash(const uint8_t* data, size_t size, uint32_t hash=2166136261UL) {
+    for(size_t i=0;i<size;i++) hash=(hash^data[i])*16777619UL;
+    return hash;
+}
+
+static uint32_t rom_signature() {
+    uint32_t hash=state_hash((const uint8_t*)active_rom_path,strlen(active_rom_path));
+    hash=state_hash((const uint8_t*)&romlen,sizeof(romlen),hash);
+    hash=state_hash((const uint8_t*)&active_rom_modified,sizeof(active_rom_modified),hash);
+    return state_hash(b0,min(romlen,(uint32_t)B0SZ),hash);
+}
+
+static bool state_path(const char* rom_path, char* out, size_t out_size) {
+    if(!gb || !cram || !b0 || !rom_path || strcmp(rom_path,active_rom_path)!=0) return false;
+    char save_path[96];
+    sd_get_save_path(rom_path,save_path,sizeof(save_path));
+    char* dot=strrchr(save_path,'.');
+    if(!dot) return false;
+    *dot=0;
+    int written=snprintf(out,out_size,"%s.state",save_path);
+    return written>0 && (size_t)written<out_size;
+}
+
+bool emu_save_state(const char* rom_path) {
+    char path[112], tmp[120], backup[120];
+    if(!state_path(rom_path,path,sizeof(path))) return false;
+    size_t ram_size=0;
+    if(gb_get_save_size_s(gb,&ram_size)!=0 || ram_size>MAXRAM) return false;
+    QuickStateHeader header={};
+    memcpy(header.magic,"CYDSTATE",8);
+    header.version=1;
+    header.rom_size=romlen;
+    header.rom_signature=rom_signature();
+    header.core_size=sizeof(*gb);
+    header.ram_size=ram_size;
+    header.checksum=state_hash((const uint8_t*)gb,sizeof(*gb));
+    header.checksum=state_hash(cram,ram_size,header.checksum);
+
+    snprintf(tmp,sizeof(tmp),"%s.tmp",path);
+    snprintf(backup,sizeof(backup),"%s.bak",path);
+    if(SD.exists(tmp)) SD.remove(tmp);
+    File file=SD.open(tmp,FILE_WRITE);
+    if(!file) return false;
+    bool ok=file.write((const uint8_t*)&header,sizeof(header))==sizeof(header)
+         && file.write((const uint8_t*)gb,sizeof(*gb))==sizeof(*gb)
+         && (ram_size==0 || file.write(cram,ram_size)==ram_size);
+    file.flush(); file.close();
+    if(!ok) { SD.remove(tmp); return false; }
+    if(SD.exists(backup)) SD.remove(backup);
+    bool had_state=SD.exists(path);
+    if(had_state && !SD.rename(path,backup)) { SD.remove(tmp); return false; }
+    if(!SD.rename(tmp,path)) {
+        if(had_state) SD.rename(backup,path);
+        SD.remove(tmp); return false;
+    }
+    Serial.printf("[STATE] Saved %s\n",path);
+    return true;
+}
+
+bool emu_load_state(const char* rom_path) {
+    char path[112];
+    if(!state_path(rom_path,path,sizeof(path))) return false;
+    File file=SD.open(path,FILE_READ);
+    if(!file) {
+        char backup[120]; snprintf(backup,sizeof(backup),"%s.bak",path);
+        file=SD.open(backup,FILE_READ);
+        if(!file) return false;
+    }
+    QuickStateHeader header={};
+    size_t ram_size=0;
+    bool valid=file.read((uint8_t*)&header,sizeof(header))==sizeof(header)
+        && memcmp(header.magic,"CYDSTATE",8)==0
+        && header.version==1
+        && header.rom_size==romlen
+        && header.rom_signature==rom_signature()
+        && header.core_size==sizeof(*gb)
+        && gb_get_save_size_s(gb,&ram_size)==0
+        && header.ram_size==ram_size
+        && ram_size<=MAXRAM
+        && file.size()==sizeof(header)+sizeof(*gb)+ram_size;
+    if(!valid) { file.close(); Serial.println("[STATE] Incompatible state"); return false; }
+
+    struct gb_s* snapshot=(struct gb_s*)malloc(sizeof(*gb));
+    uint8_t* cart_snapshot=ram_size ? (uint8_t*)malloc(ram_size) : nullptr;
+    if(!snapshot || (ram_size && !cart_snapshot)) {
+        free(snapshot); free(cart_snapshot); file.close(); return false;
+    }
+    bool read_ok=file.read((uint8_t*)snapshot,sizeof(*gb))==sizeof(*gb)
+        && (ram_size==0 || file.read(cart_snapshot,ram_size)==ram_size);
+    file.close();
+    uint32_t checksum=read_ok ? state_hash((const uint8_t*)snapshot,sizeof(*gb)) : 0;
+    if(read_ok) checksum=state_hash(cart_snapshot,ram_size,checksum);
+    if(!read_ok || checksum!=header.checksum) {
+        free(snapshot); free(cart_snapshot); Serial.println("[STATE] Damaged state"); return false;
+    }
+
+    // File contents must never replace live callback pointers.
+    snapshot->gb_rom_read=gb->gb_rom_read;
+    snapshot->gb_cart_ram_read=gb->gb_cart_ram_read;
+    snapshot->gb_cart_ram_write=gb->gb_cart_ram_write;
+    snapshot->gb_error=gb->gb_error;
+    snapshot->gb_serial_tx=gb->gb_serial_tx;
+    snapshot->gb_serial_rx=gb->gb_serial_rx;
+    snapshot->gb_bootrom_read=gb->gb_bootrom_read;
+    snapshot->display.lcd_draw_line=gb->display.lcd_draw_line;
+    snapshot->direct.priv=gb->direct.priv;
+    memcpy(gb,snapshot,sizeof(*gb));
+    if(ram_size) memcpy(cram,cart_snapshot,ram_size);
+    free(snapshot); free(cart_snapshot);
+    jpad=0; fcnt=0;
+    Serial.printf("[STATE] Loaded %s\n",path);
+    return true;
+}

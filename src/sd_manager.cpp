@@ -57,22 +57,38 @@ void sd_get_save_path(const char* rp, char* sp, int mx) {
 
 bool sd_save_state(const char* rp, const uint8_t* data, uint32_t sz) {
     if(!ready||!data||!sz) return false;
-    char sp[96]; sd_get_save_path(rp,sp,96);
-    if(SD.exists(sp)) SD.remove(sp);
-    File f=SD.open(sp,FILE_WRITE); if(!f) return false;
-    size_t w=f.write(data,sz); f.close();
-    Serial.printf("[SD] Save: %s (%u)\n",sp,w);
-    return w==sz;
+    char sp[104]; sd_get_save_path(rp,sp,96);
+    char tmp[104], backup[104];
+    snprintf(tmp,sizeof(tmp),"%s.tmp",sp);
+    snprintf(backup,sizeof(backup),"%s.bak",sp);
+    if(SD.exists(tmp)) SD.remove(tmp);
+    File f=SD.open(tmp,FILE_WRITE); if(!f) return false;
+    size_t w=f.write(data,sz);
+    f.flush(); f.close();
+    if(w!=sz) { SD.remove(tmp); return false; }
+
+    if(SD.exists(backup)) SD.remove(backup);
+    bool had_save = SD.exists(sp);
+    if(had_save && !SD.rename(sp,backup)) { SD.remove(tmp); return false; }
+    if(!SD.rename(tmp,sp)) {
+        if(had_save) SD.rename(backup,sp);
+        SD.remove(tmp);
+        return false;
+    }
+    Serial.printf("[SD] Save: %s (%u)\n",sp,(unsigned)w);
+    return true;
 }
 
 bool sd_load_state(const char* rp, uint8_t* data, uint32_t sz) {
     if(!ready||!data||!sz) return false;
-    char sp[96]; sd_get_save_path(rp,sp,96);
+    char sp[104]; sd_get_save_path(rp,sp,96);
     if(!SD.exists(sp)) {
-        Serial.printf("[SD] Load miss: %s\n", sp);
-        return false;
+        char backup[104]; snprintf(backup,sizeof(backup),"%s.bak",sp);
+        if(SD.exists(backup)) strcpy(sp,backup);
+        else { Serial.printf("[SD] Load miss: %s\n", sp); return false; }
     }
     File f=SD.open(sp,FILE_READ); if(!f) return false;
+    if(f.size()!=sz) { f.close(); return false; }
     size_t r=f.read(data,sz); f.close();
     Serial.printf("[SD] Load: %s (%u)\n",sp,r);
     if (r != sz) {

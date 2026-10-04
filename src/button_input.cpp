@@ -1,13 +1,18 @@
 #include "button_input.h"
 #include "touch_input.h"
 #include "hw_config.h"
+#include <Arduino.h>
 #include <Wire.h>
 
 static volatile uint16_t cur_btns = 0;
+static bool button_board_present = false;
 
 void button_init() {
     Wire.begin(BUTTON_I2C_SDA, BUTTON_I2C_SCL);
     Wire.setClock(100000);
+    Wire.beginTransmission(BUTTON_I2C_ADDR);
+    button_board_present = Wire.endTransmission() == 0;
+    Serial.printf("[BUTTON] PCF8574 %s\n", button_board_present ? "ready" : "not detected; touch only");
 }
 
 static uint16_t read_pcf_buttons() {
@@ -29,7 +34,7 @@ static uint16_t read_pcf_buttons() {
 }
 
 void button_update() {
-    cur_btns = read_pcf_buttons();
+    cur_btns = button_board_present ? read_pcf_buttons() : 0;
 }
 
 uint16_t button_get_buttons() {
